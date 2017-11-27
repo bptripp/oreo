@@ -4,4 +4,4 @@ OREO is a 7-degree-of-freedom robotic head that is modelled on the primate visua
 
 Further documentation is in development. In the mean time please contact Bryan Tripp (bptripp@uwaterloo.ca) for more information. 
 
-![Alt text](docs/images/oreo-side-view.png?raw=true "Title")
+![Alt text](docs/images/oreo-side-view.png?raw=true "OREO photo")
