@@ -51,7 +51,7 @@ Install FLIR Spinnaker for the cameras. This should be independent of the above 
 Clamp robot to a stable base. 
 Connect both controllers (top of head and within base) to Ethernet switch, connect computer Ethernet to switch, set subnet of that Ethernet card to 192.168.2, IP to 192.168.2.2, default gateway 192.168.2.1.
 Open EasyMotion studio, choose axis, communication->setup, make the port right. It should say “online” in green at bottom of EasyMotion window. If not, try pinging control boards (eye controller is 192.168.2.14 and neck controller is 192.168.2.15). 
-![](em-comm-setup.png =200x)
+<img source="em-comm-setup.png" width=200>
 
 Check communication with command interpreter, e.g. “?apos2” should return encoder position for axis 2. 
 
