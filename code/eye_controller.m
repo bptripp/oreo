@@ -104,8 +104,8 @@ function [] = config_eye_drive(axis_id)
     
     %set accel and speed low to gain more accuracy
     %note CPOS CSPD and CACC can be changed on the fly during a motion
-    calllib(libname,'setEyeAccel', axis_id, 1.0);
-    calllib(libname,'setEyeSpeed', axis_id, 1.0);
+    calllib(libname,'setEyeAccel', axis_id, 10.0); % 1.0 is modest
+    calllib(libname,'setEyeSpeed', axis_id, 10.0);
         
     %CPR relative positioning
     %calllib(libname,'sendMsgTypeAEye',axis_id, 22793, 3758030848,2,0);
