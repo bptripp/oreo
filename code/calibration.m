@@ -1,7 +1,15 @@
 function [] = calibration()
 
-%close all sockets that may have been left open
-pnet('closeall');
+global libname;
+
+libname = 'macaque';
+
+if not(libisloaded(libname))
+    loadlibrary(libname, 'macaque.h');
+    calllib(libname,'start');
+end
+
+close all;
 
 global left;
 global right;
@@ -12,7 +20,6 @@ right = 2;
 pitch_idx = 1;
 yaw_idx = 2;
 
-
 %% Defaults From Physical Geometry
 
 % sphereical joint centers on camera in neutral pos
@@ -22,7 +29,7 @@ cam = [0.01425, 0.020, .020]';
 neut = [0.0145; 0.03518; -.03839];
 
 % angle actuator makes with z axis
-psi=degtorad(17.3);
+psi = degtorad(17.3);
 dir = [ 0; sin(psi); cos(psi)];
 
 %link length joining the actuator end to the camera spherical joint
@@ -32,481 +39,156 @@ link = 0.0604;
 
 act = struct('axis_id',{1,2,3,4},'cam',cam,'neut',neut,'dir',dir,'link',link);
 
-eye = struct('act',{[],[]},'yaw',0,'pitch',0);
-eye(1).act = [act(left), act(right)];
-eye(2).act = [act(left+2), act(right+2)];
+eye = struct('act',{[],[]},'yaw',0,'pitch',0,'yaw_offset',0,'pitch_offset',0);
+eye(left).act = [act(left), act(right)];
+eye(right).act = [act(left+2), act(right+2)];
 eye(left).act(left).cam(1) = -eye(left).act(left).cam(1);
 eye(left).act(left).neut(1) = -eye(left).act(left).neut(1);
 eye(right).act(left).cam(1) = -eye(right).act(left).cam(1);
 eye(right).act(left).neut(1) = -eye(right).act(left).neut(1);
 
-%% Connect to Drives
-
-eyes_ip = '192.168.2.14';
-eyes_axis_id = 120;
-
-neck_ip = '192.168.2.15';
-neck_axis_id = 121;
-
-%connect to system, quit if fails
-eye_axis_sock = connect(eyes_ip);
-
-if eye_axis_sock == -1
-    return;
-end
-
 %% Configure Drives
    
-%reset the target position (tpos) to the current position(apos)
-sta_msg = build_msg_typea_group(1,11442,552);
-send_msg_typea(eye_axis_sock, eyes_ip, sta_msg);
-
 %set the position control parameters, enable the control loops
-arrayfun(@(axis_id) config_drive(eye_axis_sock, eyes_ip, axis_id), [act.axis_id]);
+arrayfun(@(axis_id) config_drive(axis_id), [act.axis_id]);
 
 %% Calibrate
-eye = calibrate_task(eye_axis_sock, eyes_ip, eyes_axis_id, eye, 200);
+eye = calibrate_task(eye, 10000);
 filename = 'calib.mat';
 save(filename, 'eye');
 
-cleanup(eye_axis_sock, eyes_ip);
+cleanup();
 
 end
 
-function [] = config_drive(sock, ip, axis_id)
+function [] = config_drive(axis_id)
 
-    apos_set_axis_pos = build_msg_typea(axis_id,9374,[0,0]);
-    %print_msg(apos_set_axis_pos);
-
-    %apos_set_axis_cpr = build_msg_typea(axis_id,22793,[57343,0]);
-    %print_msg(apos_set_axis_1_cpr);
+    global libname;
     
-    apos_set_axis_cpa = build_msg_typea(axis_id,22793,[65535,8192]);
-    %print_msg(apos_set_axis_1_cpr);
-
-    apos_set_axis_modepp3 = build_msg_typea(axis_id,22793,[49089,34561]);
-    %print_msg(apos_set_axis_1_modepp)
-
-    apos_set_axis_tum1 = build_msg_typea(axis_id,22793,[65535,16384]);
-    %print_msg(apos_set_axis_1_tum1)
+    axis_on(axis_id);
     
-    %apos_set_axis_tum0 = build_msg_typea(axis_id,22793,[49151,0]);
-    %print_msg(apos_set_axis_tum0)
-
-    axis_on(sock, ip, axis_id);
-
-    send_msg_typea(sock, ip, apos_set_axis_pos);
-    send_msg_typea(sock, ip, apos_set_axis_cpa);
-    send_msg_typea(sock, ip, apos_set_axis_modepp3);
-    send_msg_typea(sock, ip, apos_set_axis_tum1);
-
 end
 
-function [] = cleanup(sock, ip)
-    stop_all(sock, ip);
-    axis_off(sock, ip, 1);
-    axis_off(sock, ip, 2);
-    axis_off(sock, ip, 3);
-    axis_off(sock, ip, 4);
-    disconnect(sock);
-end
+function [] = cleanup()
 
-function [] = udp_write(sock,ip,port,data)
-    pnet(sock, 'write', uint8(data));
-    pnet(sock, 'writepacket', ip, port);
-end
-
-function [result] = udp_read_block(sock)
-    size=pnet(sock,'readpacket');
-    result=pnet(sock,'read', size,'uint8');
-end
-
-function [result] = connect(ip)
-    %input ip address
-    %output, socket bound to local host response port
-    conn_port = 30689;
-    conn = pnet('udpsocket',51243);
-    pnet(conn,'setwritetimeout',1);
-    pnet(conn,'setreadtimeout',1);
-
-    udp_write(conn, ip, conn_port, 1);
-    result = udp_read_block(conn);
+    global libname;
     
-    if result == 2
-        disp('********Connected**********');
-    else
-        disp('********Connection Failed**********');
-        pnet(conn,'close');
-        result = -1;
-        return;
+    calllib(libname,'disEyePollData');
+    
+    %wait to flush out current poll messages
+    pause(0.5);
+    
+    %stop all does nothing unless we configure the drives with a speed
+    %control loop
+    %stop_all();
+    
+    for i=1:4
+        axis_off(i);     
     end
     
-    udp_write(conn, ip, conn_port, [3,0,194,1,0]);
-    result = udp_read_block(conn);
+    clear;
+    libname = 'macaque';
+    calllib(libname,'cleanup');
+    unloadlibrary(libname);
+end
+
+function [] = axis_on(axis_id) 
+    global libname;
+    %reset the target position (tpos) to the current position(apos) using
+    %STA command to avoid large motions when enabling the axis
+    calllib(libname,'sendMsgTypeAEye',axis_id, 11442, 552,1,0);
     
-    if result == 4
-        disp('********Baud Rate Set to 1Mbps**********');
-    else
-        disp('********Setting Baud Rate Failed**********');
-        pnet(conn,'close');
-        result = -1;
-        return;
-    end
-        
-    result = conn;
+    %send the axis on command
+    calllib(libname,'sendMsgTypeAEye',axis_id, 258, 0, 0, 0);
+end
+
+function [] = axis_off(axis_id) 
+    global libname;
+    calllib(libname,'sendMsgTypeAEye',axis_id, 2, 0, 0, 0);     
+end
+
+function [eye] = calibrate_task(eye, max_samples)
     
-    if sync(result,ip) == -1
-        result = -1;
-    end
-    
-end
-
-function [result] = disconnect(sock, ip)
-    udp_write(sock,ip,30689,5);
-    result = udp_read_block(sock);
-    if result == 6
-        disp('********Disconnected**********');
-    else
-        disp('********Disconnection Failed**********');
-    end
-    
-    pnet(sock,'close');
-end
-
-function [result] = sync(sock, ip)
-    sync = 255*ones(15,1);
-    udp_write(sock, ip, 1700, sync);
-    result = udp_read_block(sock);
-    %disp(result);
-    if(length(result)~=15)
-        disp('********Sync Failed**********');
-        result=-1;
-        return   
-    end
-    
-    for i=1:15
-        if result(i)~=13
-            disp('********Sync Failed**********');
-            result=-1;
-            return
-        end
-    end
-    disp('********Sync Success**********');
-    result = 0;
-end
-
-function [] = axis_on(sock,ip,dest_addr) 
-    data = int16.empty;    
-    msg = build_msg_typea(dest_addr,258,data);
-    udp_write(sock,ip,1700,msg);
-end
-
-function [] = axis_off(sock,ip,dest_addr) 
-    data = int16.empty;      
-    msg = build_msg_typea(dest_addr,2,data);
-    udp_write(sock,ip,1700,msg);
-end
-
-function [] = set_position(sock, ip, axis, pos)
-    %pos is position in m
-    pos = convert_m_to_iu(pos);
-    pos = typecast(int32(pos),'uint16');
-    msg = build_msg_typea(axis,9374,pos);
-    send_msg_typea(sock, ip, msg);
-end
-
-function [] = stop3(sock, ip, dest_addr)
-    data = int16.empty;    
-    msg = build_msg_typea(dest_addr,452,data);
-    udp_write(sock, ip, 1700, msg);
-end
-
-function [] = stop_all(sock,ip)
-    data = int16.empty;    
-    msg = build_msg_typea_group(1,452,data);
-    udp_write(sock,ip,1700,msg);
-end
-
-function [msg] = build_msg_typea(dest_addr, optcode, data)  
-%dest_addr is the destiantion axis id
-%optcode is the operaton code to send
-%data is an 1D arry of type uint16 numbers
-
-    dest_addr_formatted = build_addr(dest_addr,0,0);
-       
-    if(isempty(data))
-        msg=zeros(6,1);
-    else
-        data = get_2byte_stream(data);
-        msg=zeros(6+length(data),1);
-        msg(6:6+length(data)-1) = data;
-    end
-        
-    msg(1)= length(msg)-2;    
-    msg(2:3) = get_2byte_stream(dest_addr_formatted);
-    msg(4:5) = get_2byte_stream(optcode);
-    msg(length(msg)) = gen_checksum(msg);
-end
-
-function [msg] = build_msg_typea_group(dest_addr, optcode, data)  
-%dest_addr is the destiantion axis id
-%optcode is the operaton code to send
-%data is an 1D arry of type uint16 numbers
-
-    dest_addr_formatted = build_addr(dest_addr,0,1);
-       
-    if(isempty(data))
-        msg=zeros(6,1);
-    else
-        data = get_2byte_stream(data);
-        msg=zeros(6+length(data),1);
-        msg(6:6+length(data)-1) = data;
-    end
-        
-    msg(1)= length(msg)-2;    
-    msg(2:3) = get_2byte_stream(dest_addr_formatted);
-    msg(4:5) = get_2byte_stream(optcode);
-    msg(length(msg)) = gen_checksum(msg);
-end
-
-function [msg] = build_msg_typeb(dest_addr, send_addr, var_addr, words)
-    if words == 1
-        optcode=45060;
-    elseif words == 2
-        optcode=45061;
-    else
-        return;
-    end
-    
-    dest_addr_formatted = build_addr(dest_addr,0,0);
-    send_addr_formatted = build_addr(send_addr,1,0);
-    
-    msg=zeros(10,1);
-    msg(1)= length(msg)-2;    
-    msg(2:3) = get_2byte_stream(dest_addr_formatted);
-    msg(4:5) = get_2byte_stream(optcode);
-    msg(6:7) = get_2byte_stream(send_addr_formatted);
-    msg(8:9) = get_2byte_stream(var_addr);
-    msg(10)  = gen_checksum(msg);
-end
-
-function [result] = send_msg_typea(sock, ip, msg)
-    udp_write(sock, ip, 1700, msg);
-    result = get_ack(sock, ip);
-end
-
-function [result] = send_msg_typeb(sock, ip, msg, words)
-    udp_write(sock, ip, 1700, msg);
-   
-    response = udp_read_block(sock);
-    while(response == 79)
-        response = udp_read_block(sock);
-    end
-    result = parse_response_msg(response);
-end
-
-function [msg_cksum] = gen_checksum(msg)
-    msg_cksum = bitand(sum(msg(1:length(msg)-1)),255);
-end
-
-function [addr] = build_addr(axis_id, is_host, is_group)
-    addr = bitshift(bitand(axis_id,255), 4);
-    addr = bitor(addr,bitshift(bitand(is_group,1),12));
-    addr = bitor(addr,bitand(is_host,1));
-end
-
-function [addr] = get_addr(b)
-    addr = swapbytes(typecast(uint8(b),'uint16'));
-    addr = bitand(bitshift(addr,-4),255);
-end
-
-function [bytes] = get_2byte_stream(val)
-    bytes = typecast(swapbytes(uint16(val)),'uint8');
-end
-
-function [result] = get_16bit_uint(b)
-    result = swapbytes(typecast(uint8(b), 'uint16'));
-end
-
-function [result] = get_16bit_int(b)
-    result = swapbytes(typecast(uint8(b), 'int16'));
-end
-
-function [result] = get_32bit_int(b)
-    result = typecast(uint8([b(2),b(1),b(4),b(3)]),'int32');
-end
-
-function [result] = get_ack(sock, ip)
-    result = udp_read_block(sock);
-    if(result==79)
-       result = 0;
-       return;
-    end
-    
-    disp('Failed to recieve Ack on MSG send,trying resync');
-    sync(sock, ip);
-end
-
-function [result,axis] = parse_response_msg(msg)
-    result = -1;
-    axis = -1;
-  
-    if(length(msg) < 12)
-        disp('Malformed Packet')
-        return;
-    end
-    
-    size = msg(1);
-    dst_addr = get_addr(msg(2:3));
-    optcode = get_16bit_uint(msg(4:5));
-    axis = get_addr(msg(6:7));
-    value_addr = get_16bit_uint(msg(8:9));
-    
-    if( msg(length(msg)) ~= gen_checksum(msg))
-        disp('CKSUM failed')
-        result = -1;
-        return
-    end
-    
-    if(optcode == 46084)
-        result = get_16bit_int(msg(10:11));
-    elseif(optcode == 46085)
-        result = get_32bit_int(msg(10:13));
-    end
-    
-    %disp(sprintf('msg size:%d\tdest axis:%d\tsrc axis:%d\topt code:%x\tvalue addr:%x\tvalue:%d',size,dst_addr,axis,optcode,value_addr,result)); 
-
-end
-
-function [pos] = convert_iu_to_m(iu)
-    cpr = 2048;
-    pole_pitch = 0.018;%in meters
-    pos = pole_pitch*double(iu)/cpr;
-end
-
-function [rad] = convert_iu_to_rad(iu)
-    cpr = 5000;
-    rad = 2*pi*double(iu)/(4*cpr);
-end
-
-function [iu] = convert_m_to_iu(m)
-    cpr = 2048;
-    pole_pitch = 0.018;%in meters
-    iu = int32(cpr*m/pole_pitch);
-end
-
-function [eye] = calibrate_task(sock, ip, host_id, eye, max_samples)
-
+    global libname;  
     global left;
     global right;
     global pitch_idx;
     global yaw_idx;
     
-    global sample_count;%number of samples obtained
-    global cal_data;
-    global act_l;
-    global act_r;
-    
-    open_loop_inc = 0.002;%m
-    state=0;
-    
-    act_state = struct ('max',{0,0,0,0}, 'min',0, 'pos_open_loop',0,'dir',-1);
-    
-    sample_msg = struct ('get_angle', {[],[],[],[]}, 'get_pos', [], 'get_err', []);
-    
-    cal = struct(   'angle',{zeros(max_samples,2),zeros(max_samples,2)}, ...
-                    'pos',zeros(max_samples,2), ...
-                    'err',zeros(max_samples,2));
-                
-    %build sampling messages
-    for i=0:1
-        for n=1:2
-            sample_msg(i*2+n).get_angle = build_msg_typeb(eye(i+1).act(1+mod(n+i,2)).axis_id, host_id, 2076, 2);
-            sample_msg(i*2+n).get_pos   = build_msg_typeb(eye(i+1).act(n).axis_id, host_id, 552, 2);
-            sample_msg(i*2+n).get_err   = build_msg_typeb(eye(i+1).act(n).axis_id, host_id, 554, 1);
-        end
-    end
-    
-    %set accel low to gain more accuracy,but not so low that we are moving
-    %at the next sample
-    accel = typecast(uint32(1000),'uint16');
-    accel_msg = build_msg_typea_group(1,9378,accel);
-    send_msg_typea(sock, ip, accel_msg);
-    
-    update_msg = build_msg_typea_group(1,264,int16.empty);
-    
-    %auto calibrate routine
-    for sample_count=1:max_samples
+    %pointers to the most recent data
+    cal_angles   = calllib(libname,'getEyeData');
+    cal_pos      = calllib(libname,'getEyeCalData');
         
-        %sample axes and check limits and update states
-        for i=0:1
+    cal = struct(   'angle',{zeros(max_samples,2),zeros(max_samples,2)}, ...
+                    'pos',zeros(max_samples,2));
+    sample_counts = [1,1];
+    
+    global state;
+    state=0;
+    [state] = update_state(state, cal_pos, cal);
+  
+    %auto calibrate routine to get the calibration data
+    while sample_counts(left) < max_samples && sample_counts(right) < max_samples 
+        
+        %sample axes
+        for i=0:1  
+            eye_idx = i+1;
+            r_axis  = i*2 + right;
+            l_axis  = i*2 + left;
             
-            for n=1:2
-                axis_idx = i*2 + n;
-                [ cal(i+1).angle(sample_count, n), ...
-                  cal(i+1).pos(sample_count, n), ...
-                  cal(i+1).err(sample_count, n)] = ... 
-                  sample_data(sock, ip, sample_msg(axis_idx));
-                [ act_state(axis_idx)] = check_limit(act_state(axis_idx), ... 
-                  cal(i+1).pos(sample_count, n), ... 
-                  cal(i+1).err(sample_count, n));
+            %only grab the data if we are still in active calibrate mode
+            if cal_pos.Value.complete(i*2+1) == 1 && cal_pos.Value.complete(i*2+2) == 1
+                cal(eye_idx).angle(sample_counts(eye_idx),pitch_idx) = cal_angles.Value.pitch(eye_idx);
+                cal(eye_idx).angle(sample_counts(eye_idx),yaw_idx) = cal_angles.Value.yaw(eye_idx);
+                cal(eye_idx).pos(sample_counts(eye_idx), left)   = cal_pos.Value.pos(l_axis);
+                cal(eye_idx).pos(sample_counts(eye_idx), right) = cal_pos.Value.pos(r_axis); 
+                sample_counts(eye_idx) = sample_counts(eye_idx)+1;
             end
-            
-            r_axis = i*2 + right;
-            l_axis = i*2 + left;
-                         
-            %send new linear actuator positions
-            act_state(r_axis).pos_open_loop = act_state(r_axis).pos_open_loop + ...
-                                               open_loop_inc * act_state(r_axis).dir;
-            act_state(l_axis).pos_open_loop = act_state(l_axis).pos_open_loop + ...
-                                               open_loop_inc*act_state(l_axis).dir;
-
-            set_position(sock, ip, l_axis,  act_state(l_axis).pos_open_loop);
-            set_position(sock, ip, r_axis, act_state(r_axis).pos_open_loop);    
         end
         
         %update state
-        [act_state, state] = update_state(act_state,state);
+        [state] = update_state(state, cal_pos, cal);
         
-        %send update message
-        send_msg_typea(sock, ip, update_msg);
-        
-        if(state == 5)
+        if(state == 6)
             break;
         end
         
-        pause(0.2);
-                      
+        pause(0.1);        
     end
+        
+    disp('Data Collection Complete');
+    %cleanup the library
+    for i=1:4
+        axis_off(i);     
+    end
+        
+    %data used by optimize function
+    global sample_count;
+    global cal_data;
+    global act_meas;
     
     % optimization
     for i=1:2
 
-        for n=1:2
-            if(i==2 && n ==1)
-                dir = -1;
-            else
-                dir = 1;
-            end
-            %convert logged data to m and rad
-            cal(i).angle(:,n) = dir*convert_iu_to_rad(cal(i).angle(:,n));
-            cal(i).pos(:,n)   = convert_iu_to_m(cal(i).pos(:,n));
-        end
-        
         cal_data = cal(i);
-        act_l = eye(i).act(left);
-        act_r = eye(i).act(right);
+        sample_count = sample_counts(i);
+                
+        %adjust for the index
+        cal_data.angle(:,pitch_idx) = cal_data.angle(:,pitch_idx) - cal_angles.Value.pitch_offset(i);
+        cal_data.angle(:,yaw_idx)   = cal_data.angle(:,yaw_idx) - cal_angles.Value.yaw_offset(i);
         
         figure; hold on;
-        plot(cal(i).angle(:,pitch_idx),'r');
-        plot(cal(i).angle(:,yaw_idx),'b');
+        plot(cal(i).angle(1:sample_counts(i),pitch_idx),'r');
+        plot(cal(i).angle(1:sample_counts(i),yaw_idx),'b');
+        title('Angle');
+        legend('pitch', 'yaw');
         
         %calibrate the gimbal geometry
         figure;hold on;
-        plot(cal(i).pos(:,right),'b');
-        plot(cal(i).pos(:,left),'b');
-
-        global act_meas;
+        plot(cal(i).pos(1:sample_counts(i),right),'b');
+        plot(cal(i).pos(1:sample_counts(i),left),'r');
+        title('Position');
+        legend('pos_r', 'pos_l');
         
         act_meas = cal(i).pos(:,right);
         guess = [eye(i).act(right).cam;eye(i).act(right).neut;eye(i).act(right).dir;eye(i).act(right).link];
@@ -517,76 +199,70 @@ function [eye] = calibrate_task(sock, ip, host_id, eye, max_samples)
         guess = [eye(i).act(left).cam;eye(i).act(left).neut;eye(i).act(left).dir;eye(i).act(left).link];
         [results] = fminsearch(@min_fxn_geometry, guess);
         [eye(i).act(left)] = parse_calib_result(results, eye(i).act(left));
+        
+        eye(i).yaw_offset = cal_angles.Value.yaw_offset(i);
+        eye(i).pitch_offset = cal_angles.Value.pitch_offset(i);
     end
     
 end
 
-function [angle,pos,err] = sample_data(sock, ip, msg)
-    angle = send_msg_typeb(sock, ip, msg.get_angle, 2);
-    pos   = send_msg_typeb(sock, ip, msg.get_pos, 2);
-    err   = typecast(send_msg_typeb(sock, ip, msg.get_err, 2),'int16');
-end
+function [state] = update_state(state, cal_state, cal_data)
+       
+    global libname; 
 
-function [act_state] = check_limit(act_state, pos, err)
-    if(abs(err) > 114)%1 mm
-        pos = convert_iu_to_m(pos);
-        err = convert_iu_to_m(err);
+    if (cal_state.Value.complete(1) == 0 && cal_state.Value.complete(2) == 0 ...
+            && cal_state.Value.complete(3) == 0 && cal_state.Value.complete(4) == 0)
+        pause(1);
         
-        if(act_state.dir < 0 && act_state.max == 0)
-            act_state.max = pos;
-        elseif(act_state.dir > 0 && act_state.min == 0)
-            act_state.min = pos;
-        end
-        
-        act_state.dir = 0;
-        act_state.pos_open_loop = pos-err;
-    end
-end
-
-function [act_state,state] = update_state(act_state,state)
-
-    if(state == 2)
-        for i=1:4
-            if(act_state(i).pos_open_loop < (act_state(i).max + act_state(i).min)/2)
-                act_state(i).dir = 0;
-            end
-        end
-    end
-        
-    if (act_state(1).dir == 0 && act_state(2).dir == 0 ...
-            && act_state(3).dir == 0 && act_state(4).dir == 0)
         if(state==0)
-            %at the top, go down
-            act_state(1).dir = 1;
-            act_state(2).dir  = 1;
-            act_state(3).dir  = 1;
-            act_state(4).dir  = 1;
+            %start moving up
+            for i=1:4
+                calllib(libname,'startEyeCal',i,-0.06);
+            end
             state=1;
+            
         elseif(state==1)
-            %both reached the bottom, go halfway
-            act_state(1).dir = -1;
-            act_state(2).dir  = -1;
-            act_state(3).dir  = -1;
-            act_state(4).dir  = -1;
+            %at the top, go down
+            for i=1:4
+                calllib(libname,'startEyeCal',i,0.06);
+            end
             state=2;
+            
         elseif(state==2)
-            %reached the middle
-            act_state(1).dir = -1;
-            act_state(2).dir  = 1;
-            act_state(3).dir  = -1;
-            act_state(4).dir  = 1;
+            %both reached the bottom, go halfway
+            for n=0:1
+                for i=1:2
+                    mid = ( max(cal_data(n+1).pos(:,i)) - min(cal_data(n+1).pos(:,i)) ) / 2;
+                    calllib(libname,'startEyeCal',n*2+i,-mid); 
+                end
+            end
+            calllib(libname,'sendMsgTypeAEye',1, 264, 0, 0, 1);
             state=3;
+            
         elseif(state==3)
-            %reached the left
-            act_state(1).dir = 1;
-            act_state(2).dir  = -1;
-            act_state(3).dir  = 1;
-            act_state(4).dir  = -1;
+            %reached the middle
+            for i=1:4
+                calllib(libname,'startEyeCal',i,(2*mod(i,2)-1)*0.06);
+            end
             state=4;
+            
+        elseif(state==4)
+            %reached the left
+            for i=1:4
+                calllib(libname,'startEyeCal',i,(1-2*mod(i,2))*0.06);
+                if(i==2)
+                    %give the left eye an extra second to prevent it from hanging on the right eye yoke
+                    pause(1.5);
+                end
+            end
+            state=5;
         else
             %done
-            state=5;
+            state=6;
         end
+        
+        disp(sprintf('state change to state:%d\n',state));
+        
     end
 end
 
@@ -595,6 +271,7 @@ function [act] = parse_calib_result(result, act)
     global cal_data;
     global yaw_idx;
     global pitch_idx;
+    global act_meas;
     
     act_cal = zeros(sample_count,1);
     act = struct('axis_id',act.axis_id,'cam',result(1:3),'neut',result(4:6), ...
@@ -605,7 +282,12 @@ function [act] = parse_calib_result(result, act)
                                      cal_data.angle(i,pitch_idx), ...
                                      act);
     end
-    plot(act_cal,'r');
+    
+    figure;hold on;
+    plot(act_cal(1:sample_count),'r');
+    plot(act_meas(1:sample_count),'b');
+    legend('calibrated pos','measured pos');
+            
 end
 
 function f = min_fxn_geometry(x)
