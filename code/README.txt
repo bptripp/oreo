@@ -1,0 +1,1 @@
+gcc -shared -o macaque.dll macaque.c -lwsock32
