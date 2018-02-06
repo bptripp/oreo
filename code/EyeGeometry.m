@@ -1,4 +1,4 @@
-classdef EyeGeometry
+classdef EyeGeometry < handle
     % Model of eye motion geometry. 
     % 
     % Use animateCamera() to show a sketch of eye and link motion (use
@@ -13,8 +13,10 @@ classdef EyeGeometry
     % actuator position to find the zero point of the actuator. This 
     % depends on the robot's position when it is turned on, so it has to be
     % calculated each time. 
-    
-    % TODO: some uncertainty as well in actual angle of encoder disk
+    % 
+    % Use measuredToActual() to correct for slightly mis-oriented encoders:
+    %   [actualYaw, actualPitch] = measuredToActual(eg, measuredYaw, measuredPitch)
+    %   [actuator, extension] = getExtension(eg, actualYaw, actualPitch)
     
     properties
         linkLength;
@@ -22,7 +24,9 @@ classdef EyeGeometry
         eyePitchAxisOffset;
         actuatorOriginLeft; 
         actuatorOriginRight; 
-        actuatorAngle;  
+        actuatorAngle;
+        encoderYaw; % angle of encoder 0 relative to eye's forward position (should be 0; may be a bit off)
+        encoderPitch;
         
         ballLeft; % position of left ball join in eye coordinates 
         ballRight;
@@ -30,6 +34,9 @@ classdef EyeGeometry
         eyeBoundsX;
         eyeBoundsY;
         eyeBoundsZ;
+        
+        actuatorScales; % needed to convert actuators' actual extension distances (m) to commands (calculated ~ offset + scale * measured)
+        actuatorOffsets;
     end
     
     methods 
@@ -44,6 +51,8 @@ classdef EyeGeometry
             eg.linkLength = .0604; 
             eg.eyePitchAxisOffset = -0.002; % pitch centre of rotation in z direction (from camera origin)
             eg.actuatorAngle = degtorad(17.3);
+            eg.encoderYaw = 0;
+            eg.encoderPitch = 0;
             
             if rightEye
                 eg.eyeCentre = [.03; .021; .08];
@@ -63,6 +72,10 @@ classdef EyeGeometry
             eg.eyeBoundsX = [-.015 .015];
             eg.eyeBoundsY = [-.015 .015];
             eg.eyeBoundsZ = [-.03 .02];
+                        
+            % undefined until fitGeometry is called
+            eg.actuatorScales = [];
+            eg.actuatorOffsets = [];
         end
         
         function randomize(eg)
@@ -73,6 +86,8 @@ classdef EyeGeometry
             eg.linkLength = eg.linkLength + .003*randn;
             eg.eyePitchAxisOffset = eg.eyePitchAxisOffset + .002*randn;
             eg.actuatorAngle = eg.actuatorAngle + degtorad(3)*randn;
+            eg.encoderYaw = degtorad(5)*randn;
+            eg.encoderPitch = degtorad(5)*randn;
             eg.eyeCentre = eg.eyeCentre + .002*randn(3,1);
             
             % we assume symmetry in actuator origins
@@ -138,6 +153,19 @@ classdef EyeGeometry
             axis equal
         end
         
+        function [actualYaw, actualPitch] = measuredToActual(eg, measuredYaw, measuredPitch)
+            % Corrects encoder measurements, accounting for encoder disks
+            % having slightly incorrect physical orientations. 
+            % 
+            % measuredYaw: yaw measured by encoder
+            % measuredPitch: pitch measured by encoder
+            % actualYaw: physical yaw of camera
+            % actualPitch: physical pitch of camera
+            
+            actualYaw = measuredYaw - eg.encoderYaw;
+            actualPitch = measuredPitch - eg.encoderPitch;
+        end
+        
         function [actuator, extension] = getExtension(eg, yaw, pitch)
             % Find how far each linear actuator is extended from its fully
             % withdrawn position. 
@@ -165,11 +193,126 @@ classdef EyeGeometry
                 actuator(:,i) = getActuator(actuatorOrigin, eg.actuatorAngle, extension(i));
                 
                 if fval > 1e-6
-                    warning('inconsistent geometry')
+%                     warning('inconsistent geometry')
                 end
+            end            
+        end 
+        
+        function positions = getActuatorCommands(eg, desiredYaw, desiredPitch)
+            % Find actuator positions to set for desired yaw and
+            % pitch angles. The angles should be actual angles rather than
+            % encoder measurements, which may be slightly different if the
+            % encoders are misaligned. 
+            % 
+            % desiredYaw: desired actual yaw angle
+            % desiredPitch: desired actual pitch angle
+                        
+            if isempty(eg.actuatorOffsets)
+                error('fitGeometry must be called first')
             end
             
+            [~, extension] = getExtension(eg, desiredYaw, desiredPitch);            
+            positions = (extension - eg.actuatorOffsets) ./ eg.actuatorScales; 
         end
+        
+        function err = fitGeometry(eg, pos, angle, doPlot)
+            % Fits linear actuator measurements to eye angles using an
+            % EyeGeometry model, by scaling and offsetting. 
+            % 
+            % pos: linear actuator positions from calibration data
+            % angle: eye angles from calibration data
+            % doPlot: plots transformed measurements against calculated positions
+            %   if 1
+            % 
+            % err: RMS error in fit
+
+            measured = pos;
+            calculated = zeros(size(measured));
+
+            for i = 1:size(pos,1)
+                [actualYaw, actualPitch] = measuredToActual(eg, angle(i,2), angle(i,1));
+                [~, extension] = getExtension(eg, actualYaw, actualPitch);
+                calculated(i,:) = extension;
+            end
+
+            scales = [0 0]; offsets = [0 0]; err = [0 0];
+            [scales(1), offsets(1), err(1)] = fitActuator(measured(:,2), calculated(:,1), doPlot); %TODO: watch out for this indexing
+            [scales(2), offsets(2), err(2)] = fitActuator(measured(:,1), calculated(:,2), doPlot);
+            
+            eg.actuatorScales = scales;
+            eg.actuatorOffsets = offsets;
+        end
+        
+    end
+    
+    methods (Static)
+        function bestEG = findGeometries(cal, eye)
+            % Finds geometry parameters that provide a good fit for given
+            % calibration data. 
+            % 
+            % cal: Calibration data (eye angles and actuator positions)
+            %   from calibration.m
+            % egLeft: an EyeGeometry that fits data for left eye
+            % egRight: an EyeGeometry that fits data for right eye
+            
+            cal = cal(1); % TODO: do 2 later
+            lastSample = find(abs(cal.angle(:,1)) > 0, 1, 'last'); 
+            cal.angle = cal.angle(1:lastSample,:);
+            cal.pos = cal.pos(1:lastSample,:);
+            
+            eye = eye(1); % TODO: do 2 later
+            cal.angle(:,1) = cal.angle(:,1) - eye.pitch_offset;
+            cal.angle(:,2) = cal.angle(:,2) - eye.yaw_offset;
+
+            n = 500;
+            stride = 5; % subsample the signals
+            bestEG = []; 
+            bestErr = 1e6;
+            
+            fprintf('calibrating .')
+            for i = 1:n
+                if mod(i,10) == 0, fprintf('.'), end
+                
+                eg = EyeGeometry(1);
+                eg.randomize();
+
+                % skip the first sample, which is noisy
+                err = eg.fitGeometry(cal.pos(2:stride:end,:), cal.angle(2:stride:end,:), 0);
+                if mean(err) < bestErr
+                    bestEG = eg; 
+                    bestErr = mean(err);
+                end
+            end
+            fprintf(' done\n')
+            bestEG.fitGeometry(cal.pos, cal.angle, 1);
+        end        
+    end
+end
+
+function [scale, offset, err] = fitActuator(measured, calculated, doPlot)
+    % Find parameters of an affine model of actuator position. 
+    % 
+    % measured: actuator position measured from onboard encoder (n x 1)
+    % calculated: actuator position calculated from measured eye angles and
+    %   a EyeGeometry model
+    % doPlot: plots transformed measurements against calculated positions
+    %   if 1
+    % 
+    % scale and offset: calculated ~ offset + scale * measured 
+    % err: RMS error in fit
+    
+    phi = [measured ones(size(measured))];
+    w = (phi' * phi)\phi' * calculated;
+    scale = w(1);
+    offset = w(2);
+    
+    approx = phi * w;
+    err = mean((approx - calculated).^2).^.5;
+    
+    if doPlot
+        figure, plot(approx), hold on, plot(calculated)
+        title(sprintf('RMS error: %f', err))
+        legend('from linear actuators', 'from model')
     end
 end
 
