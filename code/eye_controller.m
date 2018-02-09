@@ -335,7 +335,7 @@ end
 function [] = move_neck(des_angle_deg)
     
     global libname;
-    
+    pause(.5);
     for ii=1:3       
         des = deg2rad(des_angle_deg(ii));
         %TODO limit here

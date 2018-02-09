@@ -69,8 +69,8 @@
 //technosoft drive program specific addresses
 #define MOTION_LOOP_IP		0x4022u
 #define WAIT_LOOP_IP		0x401Bu
-#define MOTION_LOOP_NECK_IP	0x4039u
-#define WAIT_LOOP_NECK_IP	0x4032u
+#define MOTION_LOOP_NECK_IP	0x403Bu
+#define WAIT_LOOP_NECK_IP	0x4034u
 #define REV_CAL_IP		0x4061u
 #define FOR_CAL_IP		0x4027u
 #define CAL_RUN_VAR		0x03B3u

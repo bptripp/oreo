@@ -10,8 +10,11 @@
 #define IU_TO_M (METERS_PER_POLE/COUNTS_PER_POLE)
 #define M_TO_IU (COUNTS_PER_POLE/METERS_PER_POLE)
 #define COUNTS_PER_REV 	((double)5000)
+#define COUNTS_PER_REV_YAW 	((double)16*86)
 #define IU_TO_RAD (M_PI/(2*COUNTS_PER_REV))
 #define RAD_TO_IU (1/IU_TO_RAD)
+#define IU_TO_RAD_YAW (M_PI/(2*COUNTS_PER_REV_YAW))
+#define RAD_TO_IU_YAW (1/IU_TO_RAD_YAW)
 
 #define SAMPLE_PERIOD_EYE_S	0.0005
 #define SAMPLE_PERIOD_NECK_S	0.001
@@ -22,9 +25,11 @@
 #define SPEED_IU_TO_MPS		        (1.0 / MPS_TO_SPEED_IU)
 
 #define RADPSS_TO_ACCEL_IU		(SAMPLE_PERIOD_NECK_S * SAMPLE_PERIOD_NECK_S * RAD_TO_IU)
+#define RADPSS_TO_ACCEL_IU_YAW	(SAMPLE_PERIOD_NECK_S * SAMPLE_PERIOD_NECK_S * RAD_TO_IU_YAW)
 #define ACCEL_IU_TO_RADPSS		(1.0 / RADPSS_TO_ACCEL_IU)
 #define RADPS_TO_SPEED_IU		(SAMPLE_PERIOD_NECK_S * RAD_TO_IU)
-#define SPEED_IU_TO_RADPS		(1.0 / SPEED_IU_TO_RADPS)
+#define RADPS_TO_SPEED_IU_YAW    (SAMPLE_PERIOD_NECK_S * RAD_TO_IU_YAW)
+#define SPEED_IU_TO_RADPS		(1.0 / RADPS_TO_SPEED_IU)
 
 #define GETBYTES_FROM_WORD(src,dst_p) (*(uint16_t*)(dst_p) = htons((uint16_t)src))
 #define GETBYTES_FROM_LONG(src,dst_p) (*(uint32_t*)(dst_p) = htonl((uint32_t)src))
@@ -84,6 +89,11 @@ int32_t convert_m_to_iu(double m)
 double convert_iu_to_rad(int32_t iu)
 {
     return IU_TO_RAD * iu;
+}
+
+double convert_iu_to_rad_yaw(int32_t iu)
+{
+    return IU_TO_RAD_YAW * iu;
 }
 
 typedef struct rawData
@@ -180,7 +190,7 @@ void neckRxCallback(uint16_t axis_id, uint16_t reg_addr, int32_t data)
     {
         case NECK_YAW_AXIS:
             log_data_id = NECK_YAW; 
-            neckData.yaw = converted_data;
+            neckData.yaw = convert_iu_to_rad_yaw(data);
             break;
         case NECK_PITCH_AXIS:
             log_data_id = NECK_PITCH;
@@ -904,13 +914,24 @@ __declspec(dllexport) void setEyePos(uint8_t axis, double pos_m)
 
 __declspec(dllexport) void setNeckPos(uint8_t axis, double pos_rad)
 {
-    uint32_t data = getLong(pos_rad*RAD_TO_IU);
+    uint32_t data;
+    if (axis == NECK_YAW_AXIS)
+        data = getLong(pos_rad*RAD_TO_IU_YAW);
+    else
+        data = getLong(pos_rad*RAD_TO_IU);
+    
     sendMsgTypeANeck(axis, OPT_CPOS, data, 2, 0);
 }
 
 __declspec(dllexport) void setNeckSpeed(uint8_t axis, double speed_rps)
 {
-    uint32_t data = getFixedPoint(speed_rps*RADPS_TO_SPEED_IU);
+    uint32_t data;
+    
+    if(axis == NECK_YAW_AXIS)
+        data = getFixedPoint(speed_rps*RADPS_TO_SPEED_IU_YAW);
+    else
+        data = getFixedPoint(speed_rps*RADPS_TO_SPEED_IU);
+    
     sendMsgTypeANeck(axis, OPT_CSPD, data, 2, 0);
 }
 
@@ -922,7 +943,13 @@ __declspec(dllexport) void setEyeSpeed(uint8_t axis, double speed_mps)
 
 __declspec(dllexport) void setNeckAccel(uint8_t axis, double accel_rpss)
 {
-    uint32_t data = getFixedPoint(accel_rpss*RADPSS_TO_ACCEL_IU);
+    uint32_t data;
+    
+    if(axis == NECK_YAW_AXIS)
+        data = getFixedPoint(accel_rpss*RADPSS_TO_ACCEL_IU_YAW);
+    else
+        data = getFixedPoint(accel_rpss*RADPSS_TO_ACCEL_IU);
+    
     sendMsgTypeANeck(axis, OPT_CACC, data, 2, 0);
 }
 

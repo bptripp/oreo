@@ -203,7 +203,8 @@ function [eye] = calibrate_task(eye, max_samples)
         eye(i).yaw_offset = cal_angles.Value.yaw_offset(i);
         eye(i).pitch_offset = cal_angles.Value.pitch_offset(i);
     end
-    
+        
+    save('cal-data.mat', 'cal', 'sample_counts', 'eye');
 end
 
 function [state] = update_state(state, cal_state, cal_data)
