@@ -1,4 +1,4 @@
-function [] = eye_controller()
+function [] = saccade_controller()
 
     close all;
 
@@ -8,6 +8,8 @@ function [] = eye_controller()
     global right;
     global libname;
     global eye_cal;
+    global eye_geometry_left;
+    global eye_geometry_right;
 
     left = 1;
     right = 2;
@@ -31,10 +33,16 @@ function [] = eye_controller()
             loadlibrary(libname, 'macaque.h');
             calllib(libname,'start');
         end
+        
+        cal_data = load('cal-data.mat');
+        [eye_geometry_right, eye_geometry_left] = EyeGeometry.findGeometries(cal_data.cal, cal_data.eye);
+        save('eye-geometry.mat', 'eye_geometry_right', 'eye_geometry_left')
     end
 
     eye_cal = load(filename, 'eye');
     eye_cal = eye_cal.eye;
+    
+    load('eye-geometry.mat');
 
     %Set-up clean up function
     cleanup_result = onCleanup(@()cleanup_all());
@@ -76,7 +84,7 @@ function [] = eye_controller()
                 disp('Bad input');
                 continue;
             end
-            saccade(des_point, [0;0;0], 0, 2);
+            saccade(des_point, [0;0;0], 0, 10);
 %             motion(des_point, [], 2, 500);
             
         else
@@ -250,7 +258,7 @@ function [] = motion(des_eye, des_neck, log_period_ms, total_time_ms)
     neck_data = calllib(libname,'getNeckData');
     
     %give things a little bit to get fired up
-    pause(0.1);
+    pause(0.6);
 
     correct_period = 10; %round(100 / log_period_ms)
     int_error = [0;0];
@@ -285,18 +293,7 @@ function [] = motion(des_eye, des_neck, log_period_ms, total_time_ms)
         neck_angle(t,2)= neck_data.Value.pitch;
         neck_angle(t,3)= neck_data.Value.roll;
         
-        pause(loop_time);
-        
-%         if ~isempty(des_eye) && mod(t, correct_period) == 0
-%             target = [des_eye(:,eye_motion_index-1)];
-%             yaw_error = mean(eye_angle(t,[1 3])) - des_eye(1,eye_motion_index-1);
-%             pitch_error = mean(eye_angle(t,[2 4])) - des_eye(2,eye_motion_index-1);
-% %             move_eyes(-.5*[yaw_error; pitch_error])
-%             error = [yaw_error; pitch_error]
-%             int_error = int_error + error
-%             Kp = 0; Ki = 0;
-%             move_eyes(target - Kp*error - Ki*int_error)
-%         end
+        pause(loop_time);        
     end
     
     calllib(libname,'disEyePollData');    
@@ -386,6 +383,8 @@ function do_move_eyes(yaw_left, pitch_left, yaw_right, pitch_right)
     global right;
     global libname;
     global eye_cal;
+    global eye_geometry_right;
+    global eye_geometry_left;
 
     fprintf('do_move_eyes: [%4.2f %4.2f %4.2f %4.2f]\n', yaw_left, pitch_left, yaw_right, pitch_right)
     
@@ -393,14 +392,14 @@ function do_move_eyes(yaw_left, pitch_left, yaw_right, pitch_right)
         return;
     end
     
-    for ii=1:2
-        [r_act_ff,drdyaw,drdpitch]=inverse_kin_jac(yaw_right, pitch_right, eye_cal(ii).act(right));
-        [l_act_ff,dldyaw,dldpitch]=inverse_kin_jac(yaw_left, pitch_left, eye_cal(ii).act(left));
+    positions_right = eye_geometry_right.getActuatorCommands(yaw_right, pitch_right);
+    calllib(libname,'setEyePos', eye_cal(1).act(right).axis_id, positions_right(1));
+    calllib(libname,'setEyePos', eye_cal(1).act(left).axis_id, positions_right(2));    
+
+    positions_left = eye_geometry_left.getActuatorCommands(yaw_left, pitch_left);
+    calllib(libname,'setEyePos', eye_cal(2).act(right).axis_id, positions_left(1));
+    calllib(libname,'setEyePos', eye_cal(2).act(left).axis_id, positions_left(2));    
         
-        calllib(libname,'setEyePos', eye_cal(ii).act(right).axis_id, r_act_ff);
-        calllib(libname,'setEyePos', eye_cal(ii).act(left).axis_id, l_act_ff);    
-    end
-    
     %Send the update message
     calllib(libname,'sendMsgTypeAEye',1, 264, 0, 0, 1);    
 end
@@ -475,7 +474,7 @@ function [] = saccade(des_eye, des_neck, saccade_onsets_ms, log_period_ms)
     neck_data = calllib(libname,'getNeckData');
     
     %give things a little bit to get fired up
-    pause(0.1);
+    pause(0.6);
 
     last_saccade_ind = -1;
     for k=1:steps
@@ -485,10 +484,6 @@ function [] = saccade(des_eye, des_neck, saccade_onsets_ms, log_period_ms)
         eye_angle(k,2) = eye_data.Value.pitch(left) - eye_cal(left).pitch_offset;
         eye_angle(k,3) = eye_data.Value.yaw(right) - eye_cal(right).yaw_offset;
         eye_angle(k,4) = eye_data.Value.pitch(right) - eye_cal(right).pitch_offset;
-%         eye_angle(k,1) = eye_data.Value.yaw(left);
-%         eye_angle(k,2) = eye_data.Value.pitch(left);
-%         eye_angle(k,3) = eye_data.Value.yaw(right);
-%         eye_angle(k,4) = eye_data.Value.pitch(right);
         
         neck_angle(k,1)= neck_data.Value.yaw;
         neck_angle(k,2)= neck_data.Value.pitch;
@@ -509,13 +504,15 @@ function [] = saccade(des_eye, des_neck, saccade_onsets_ms, log_period_ms)
         eye_target = des_eye(:,saccade_ind);
         [yaw_left, pitch_left, yaw_right, pitch_right] = get_eye_angles(eye_target);        
         
-        Kp = .0; Ki = 0; % PI control gains        
+        Kp = .0; Ki = 0.0; % PI control gains        
         target = [yaw_left; pitch_left; yaw_right; pitch_right];
-        
+                
         if saccade_ind > last_saccade_ind %reset error integration with each saccade 
             integrated_error = zeros(4,1);
         end
         error = eye_angle(k,:)' - target;
+        error';
+
         integrated_error = integrated_error + error * loop_time;
         
         command = target - Kp*error - Ki*integrated_error;        

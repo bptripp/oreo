@@ -246,45 +246,55 @@ classdef EyeGeometry < handle
     end
     
     methods (Static)
-        function bestEG = findGeometries(cal, eye)
+        function [egRight, egLeft] = findGeometries(cals, eyes)
             % Finds geometry parameters that provide a good fit for given
             % calibration data. 
             % 
-            % cal: Calibration data (eye angles and actuator positions)
+            % cals: Calibration data (eye angles and actuator positions)
             %   from calibration.m
-            % egLeft: an EyeGeometry that fits data for left eye
+            % eyes: Calibration data (eye param results) from calibration.m
             % egRight: an EyeGeometry that fits data for right eye
+            % egLeft: an EyeGeometry that fits data for left eye
             
-            cal = cal(1); % TODO: do 2 later
-            lastSample = find(abs(cal.angle(:,1)) > 0, 1, 'last'); 
-            cal.angle = cal.angle(1:lastSample,:);
-            cal.pos = cal.pos(1:lastSample,:);
-            
-            eye = eye(1); % TODO: do 2 later
-            cal.angle(:,1) = cal.angle(:,1) - eye.pitch_offset;
-            cal.angle(:,2) = cal.angle(:,2) - eye.yaw_offset;
+            for i = 1:2
+                cal = cals(i); 
+                lastSample = find(abs(cal.angle(:,1)) > 0, 1, 'last'); 
 
-            n = 500;
-            stride = 5; % subsample the signals
-            bestEG = []; 
-            bestErr = 1e6;
-            
-            fprintf('calibrating .')
-            for i = 1:n
-                if mod(i,10) == 0, fprintf('.'), end
-                
-                eg = EyeGeometry(1);
-                eg.randomize();
+                % discarding first 50 samples due to encoder hardware problem
+                cal.angle = cal.angle(51:lastSample,:);
+                cal.pos = cal.pos(51:lastSample,:);
 
-                % skip the first sample, which is noisy
-                err = eg.fitGeometry(cal.pos(2:stride:end,:), cal.angle(2:stride:end,:), 0);
-                if mean(err) < bestErr
-                    bestEG = eg; 
-                    bestErr = mean(err);
+                eye = eyes(i); 
+                cal.angle(:,1) = cal.angle(:,1) - eye.pitch_offset;
+                cal.angle(:,2) = cal.angle(:,2) - eye.yaw_offset;
+
+                n = 500;
+                stride = 5; % subsample the signals
+                bestEG = []; 
+                bestErr = 1e6;
+
+                fprintf('calibrating #%i .', i)
+                for j = 1:n
+                    if mod(j,10) == 0, fprintf('.'), end
+
+                    eg = EyeGeometry(j == 1); 
+                    eg.randomize();
+
+                    % skip the first sample, which is noisy
+                    err = eg.fitGeometry(cal.pos(2:stride:end,:), cal.angle(2:stride:end,:), 0);
+                    if mean(err) < bestErr
+                        bestEG = eg; 
+                        bestErr = mean(err);
+                    end
                 end
+                fprintf(' done\n')
+                
+                
+                bestEG.fitGeometry(cal.pos, cal.angle, 1);
+                result(i) = bestEG;
             end
-            fprintf(' done\n')
-            bestEG.fitGeometry(cal.pos, cal.angle, 1);
+            egRight = result(1);
+            egLeft = result(2);             
         end        
     end
 end

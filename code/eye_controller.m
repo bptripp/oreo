@@ -261,7 +261,7 @@ function [] = motion(des_eye, des_neck, log_period_ms, total_time_ms)
     neck_data = calllib(libname,'getNeckData');
     
     %give things a little bit to get fired up
-    pause(0.1);
+    pause(0.6);
 
     for t=1:size
         
@@ -335,7 +335,6 @@ end
 function [] = move_neck(des_angle_deg)
     
     global libname;
-    pause(.5);
     for ii=1:3       
         des = deg2rad(des_angle_deg(ii));
         %TODO limit here

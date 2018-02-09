@@ -153,7 +153,7 @@ function [eye] = calibrate_task(eye, max_samples)
             break;
         end
         
-        pause(0.1);        
+        pause(0.2);        
     end
         
     disp('Data Collection Complete');
