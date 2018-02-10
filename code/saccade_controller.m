@@ -85,8 +85,162 @@ function [] = saccade_controller()
                 continue;
             end
             saccade(des_point, [0;0;0], 0, 10);
-%             motion(des_point, [], 2, 500);
             
+        elseif strncmpi(action, 'a', length('a')) == 1
+            % predefined sequence A
+            neck = [
+                -50 10 -10; 
+                0 0 0;
+                50 10 10;
+                50 10 10;
+                50 30 20;
+                0 -30 0;
+                0 30 0;
+                0 30 20;
+                0 30 -20;
+                0 0 0
+                ]';
+            n = size(neck, 2);
+            points = [zeros(2,n); 10*ones(1,n)];
+            onsets = (0:n-1)*800;
+            onsets(end-1) = onsets(end-2) + 300;
+            onsets(end) = onsets(end-1) + 500;
+            log_period_ms = 20;
+            saccade(points, neck, onsets, log_period_ms);
+            
+        elseif strncmpi(action, 'b', length('b')) == 1
+            % predefined sequence B
+            points = [
+                0 0 10;
+                0 0 .5;
+                0 0 10;
+                0 0 .5;
+                0 5 10;
+                0 -5 10;
+                -5 0 10;
+                5 0 10;
+                0 0 10
+                ]';
+            
+            n = size(points, 2);
+            neck = zeros(size(points));
+            onsets = (0:n-1)*300;
+            log_period_ms = 20;
+            saccade(points, neck, onsets, log_period_ms);
+            
+        elseif strncmpi(action, 'c', length('c')) == 1
+            % predefined sequence C (B followed by A)
+            points1 = [
+                0 0 10;
+                0 0 .5;
+                0 0 10;
+                0 0 .5;
+                0 5 10;
+                0 -5 10;
+                -5 0 10;
+                5 0 10;
+                0 0 10
+                ]';
+            
+            n1 = size(points1, 2);
+            neck1 = zeros(size(points1));
+            
+            neck2 = [
+                -50 10 -10; 
+                0 0 0;
+                50 10 10;
+                50 10 10;
+                0 -30 0;
+                0 30 0;
+                0 30 20;
+                0 30 -20;
+                0 0 0
+                ]';
+            n2 = size(neck2, 2);
+            points2 = [zeros(2,n2); 10*ones(1,n2)];
+            
+            points2(:,4) = [-7; 3; 10];
+            
+            intervals = [300*ones(1,n1) 800*ones(1,n2-3) 300 500];
+            onsets = [0 cumsum(intervals)];
+            onsets(end-1) = onsets(end-2) + 300;
+            onsets(end) = onsets(end-1) + 500;
+            
+            points = [points1 points2];
+            neck = [neck1 neck2];
+            log_period_ms = 20;
+            saccade(points, neck, onsets, log_period_ms);
+        
+        elseif strncmpi(action, 'dynamics-neck', length('dynamics-neck')) == 1
+            % neck dynamics demo
+            neck = [
+                0 0 0; 
+                -60 0 0;
+                0 0 0;
+                60 0 0;
+                0 0 0;
+                0 -35 0;
+                0 0 0;
+                0 35 0;
+                0 0 0;
+                0 0 25;
+                0 0 0;
+                0 0 -25;
+                0 0 0
+                ]';
+            n = size(neck, 2);
+            points = [zeros(2,n); 10*ones(1,n)];
+            onsets = (0:n-1)*1000;
+            log_period_ms = 3;
+            saccade(points, neck, onsets, log_period_ms);
+            
+        elseif strncmpi(action, 'dynamics-eyes', length('dynamics-eyes')) == 1
+            % eye dynamics demo
+            [des_ang, num] = sscanf(action,'dynamics-eyes %f');            
+            
+            distance = 1000;
+            angle = degtorad(des_ang);
+            straight = distance * sin(angle);
+            diag = (straight^2/2)^.5;
+            z = distance * cos(angle);
+            
+            points = [
+                0 0 z; 
+                straight 0 z;
+                0 0 z;
+                -straight 0 z;
+                0 0 z;
+                0 straight z;
+                0 0 z;
+                0 -straight z;
+                0 0 z
+                diag diag z;
+                0 0 z;
+                -diag -diag z;
+                0 0 z;
+                -diag diag z;
+                0 0 z;
+                diag -diag z;
+                0 0 z;
+                ]';
+            n = size(points, 2);
+            neck = zeros(3,n); 
+            onsets = (0:n-1)*500;
+            log_period_ms = 3;
+            saccade(points, neck, onsets, log_period_ms);
+
+        elseif strncmpi(action, 'tatler', length('tatler')) == 1
+            pos = (csvread('tatler-2011-2a.csv')-.5) * [1408 0; 0 1080] * (.75/1408);
+            points = [pos ones(size(pos,1),1)]';
+            n = size(points, 2);
+            neck = zeros(size(points));
+
+%             intervals = randi([150 500], 1, n-1);
+            intervals = 300*ones(1, n-1);
+            onsets = [0 cumsum(intervals)];
+            
+            log_period_ms = 5;
+            saccade(points, neck, onsets, log_period_ms);
         else
             disp('Bad Input');
         end
@@ -330,50 +484,51 @@ function [] = move_neck(des_angle_deg)
     calllib(libname,'sendMsgTypeANeck',1, 264, 0, 0, 1);
 end
 
-function [] = point_eyes(des_point)
-    % des_point: 3D point that both eyes should point to, in head coordinates 
-    %   [right, up, forward] from robot's perspective, with origin centred
-    %   between eye centres of rotation when eyes are pointed forward
-    % 
-    % Note the pitch centre of rotation is slightly aft of the yaw centre, which
-    % is accounted for in get_angles(...)
-    
-    disp('pointing eyes')
-    global left;
-    global right;
-    global libname;
-    global eye_cal;
-    
-    if(isempty(fieldnames(eye_cal)))
-        return;
-    end
-    
-    % clip nearby points to prevent eyes from banging together 
-    des_point(3) = max(des_point(3), .5);
-    
-    % For consistency with other code, left and right eyes are opposite of
-    % anatomical left and right eyes. 
-    % Positive pitch is up. Positive yaw is to the robot's left. 
-    eye_separation = .058;
-    des_point_left = des_point - [eye_separation/2; 0; 0]; 
-    des_point_right = des_point + [eye_separation/2; 0; 0];
-    
-    [des_yaw_left, des_pitch_left] = get_angles(des_point_left);
-    [des_yaw_right, des_pitch_right] = get_angles(des_point_right);
-    fprintf('left: yaw %4.2f pitch %4.2f\n', des_yaw_left, des_pitch_left)
-    fprintf('right: yaw %4.2f pitch %4.2f\n', des_yaw_right, des_pitch_right)
-    
-    for ii=1:2
-        [r_act_ff,drdyaw,drdpitch]=inverse_kin_jac(des_yaw_right, des_pitch_right, eye_cal(ii).act(right));
-        [l_act_ff,dldyaw,dldpitch]=inverse_kin_jac(des_yaw_left, des_pitch_left, eye_cal(ii).act(left));
-        
-        calllib(libname,'setEyePos', eye_cal(ii).act(right).axis_id, r_act_ff);
-        calllib(libname,'setEyePos', eye_cal(ii).act(left).axis_id, l_act_ff);    
-    end
-    
-    %Send the update message
-    calllib(libname,'sendMsgTypeAEye',1, 264, 0, 0, 1);    
-end
+% function [] = point_eyes(des_point)
+%     % des_point: 3D point that both eyes should point to, in head coordinates 
+%     %   [right, up, forward] from robot's perspective, with origin centred
+%     %   between eye centres of rotation when eyes are pointed forward
+%     % 
+%     % Note the pitch centre of rotation is slightly aft of the yaw centre, which
+%     % is accounted for in get_angles(...)
+%     
+%     disp('pointing eyes')
+%     global left;
+%     global right;
+%     global libname;
+%     global eye_cal;
+%     
+%     if(isempty(fieldnames(eye_cal)))
+%         return;
+%     end
+%     
+%     % clip nearby points to prevent eyes from banging together 
+%     des_point(3) = max(des_point(3), .5);
+%     
+%     % For consistency with other code, left and right eyes are opposite of
+%     % anatomical left and right eyes. 
+%     % Positive pitch is up. Positive yaw is to the robot's left.
+%     disp('***')
+%     eye_separation = .058;
+%     des_point_left = des_point + [eye_separation/2; 0; 0]; 
+%     des_point_right = des_point - [eye_separation/2; 0; 0];
+%     
+%     [des_yaw_left, des_pitch_left] = get_angles(des_point_left);
+%     [des_yaw_right, des_pitch_right] = get_angles(des_point_right);
+%     fprintf('left: yaw %4.2f pitch %4.2f\n', des_yaw_left, des_pitch_left)
+%     fprintf('right: yaw %4.2f pitch %4.2f\n', des_yaw_right, des_pitch_right)
+%     
+%     for ii=1:2
+%         [r_act_ff,drdyaw,drdpitch]=inverse_kin_jac(des_yaw_right, des_pitch_right, eye_cal(ii).act(right));
+%         [l_act_ff,dldyaw,dldpitch]=inverse_kin_jac(des_yaw_left, des_pitch_left, eye_cal(ii).act(left));
+%         
+%         calllib(libname,'setEyePos', eye_cal(ii).act(right).axis_id, r_act_ff);
+%         calllib(libname,'setEyePos', eye_cal(ii).act(left).axis_id, l_act_ff);    
+%     end
+%     
+%     %Send the update message
+%     calllib(libname,'sendMsgTypeAEye',1, 264, 0, 0, 1);    
+% end
 
 function do_move_eyes(yaw_left, pitch_left, yaw_right, pitch_right)
     % Converts yaw and pitch angle for each eye to actuator positions and
@@ -386,7 +541,7 @@ function do_move_eyes(yaw_left, pitch_left, yaw_right, pitch_right)
     global eye_geometry_right;
     global eye_geometry_left;
 
-    fprintf('do_move_eyes: [%4.2f %4.2f %4.2f %4.2f]\n', yaw_left, pitch_left, yaw_right, pitch_right)
+%     fprintf('do_move_eyes: [%4.2f %4.2f %4.2f %4.2f]\n', yaw_left, pitch_left, yaw_right, pitch_right)
     
     if(isempty(fieldnames(eye_cal)))
         return;
@@ -416,8 +571,8 @@ function [yaw_left, pitch_left, yaw_right, pitch_right] = get_eye_angles(point)
     % anatomical left and right eyes. 
     % Positive pitch is up. Positive yaw is to the robot's left. 
     eye_separation = .058;
-    point_left = point - [eye_separation/2; 0; 0]; 
-    point_right = point + [eye_separation/2; 0; 0];
+    point_left = point + [eye_separation/2; 0; 0]; 
+    point_right = point - [eye_separation/2; 0; 0];
     
     [yaw_left, pitch_left] = get_angles(point_left);
     [yaw_right, pitch_right] = get_angles(point_right);
@@ -461,7 +616,7 @@ function [] = saccade(des_eye, des_neck, saccade_onsets_ms, log_period_ms)
     assert(size(des_neck, 2) == length(saccade_onsets_ms));
     
     T = saccade_onsets_ms(end) + 1000; % enough time to finish last saccade
-    steps = T / log_period_ms;
+    steps = round(T / log_period_ms);
     
     eye_angle  = zeros(steps,4);
     neck_angle = zeros(steps,3);
@@ -494,29 +649,37 @@ function [] = saccade(des_eye, des_neck, saccade_onsets_ms, log_period_ms)
  
         % for each new saccade we issue a single command to move neck
         if saccade_ind > last_saccade_ind
+            disp(saccade_ind)
             neck_target = des_neck(:,saccade_ind);
             move_neck(neck_target);
-        end
-        
-        % for the eyes we need continuous feedback control because the
-        % board-level controllers are for actuator positions rather than
-        % angles
-        eye_target = des_eye(:,saccade_ind);
-        [yaw_left, pitch_left, yaw_right, pitch_right] = get_eye_angles(eye_target);        
-        
-        Kp = .0; Ki = 0.0; % PI control gains        
-        target = [yaw_left; pitch_left; yaw_right; pitch_right];
-                
-        if saccade_ind > last_saccade_ind %reset error integration with each saccade 
-            integrated_error = zeros(4,1);
-        end
-        error = eye_angle(k,:)' - target;
-        error';
 
-        integrated_error = integrated_error + error * loop_time;
+            eye_target = des_eye(:,saccade_ind);
+            [yaw_left, pitch_left, yaw_right, pitch_right] = get_eye_angles(eye_target);        
+
+            target = [yaw_left; pitch_left; yaw_right; pitch_right];
+            do_move_eyes(target(1), target(2), target(3), target(4));
+        end
         
-        command = target - Kp*error - Ki*integrated_error;        
-        do_move_eyes(command(1), command(2), command(3), command(4));
+%         % for the eyes we need continuous feedback control because the
+%         % board-level controllers are for actuator positions rather than
+%         % angles
+%         eye_target = des_eye(:,saccade_ind);
+%         [yaw_left, pitch_left, yaw_right, pitch_right] = get_eye_angles(eye_target);        
+%         
+%         target = [yaw_left; pitch_left; yaw_right; pitch_right];
+%                 
+%         Kp = .0; Ki = 0.0; % PI control gains        
+% 
+%         if saccade_ind > last_saccade_ind %reset error integration with each saccade 
+%             integrated_error = zeros(4,1);
+%         end
+%         error = eye_angle(k,:)' - target;
+%         error';
+% 
+%         integrated_error = integrated_error + error * loop_time;
+%         
+%         command = target - Kp*error - Ki*integrated_error;        
+%         do_move_eyes(command(1), command(2), command(3), command(4));
         
         last_saccade_ind = saccade_ind;
                         
