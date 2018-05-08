@@ -175,13 +175,13 @@ function [] = saccade_controller()
             % neck dynamics demo
             neck = [
                 0 0 0; 
-                -60 0 0;
+                -25 0 0;
                 0 0 0;
-                60 0 0;
+                25 0 0;
                 0 0 0;
-                0 -35 0;
+                0 -25 0;
                 0 0 0;
-                0 35 0;
+                0 25 0;
                 0 0 0;
                 0 0 25;
                 0 0 0;
@@ -291,8 +291,8 @@ function [] = config_neck_drive(axis_id)
     
     %set accel and speed low to gain more accuracy
     %not CPOS CSPD and CACC can be changed on the fly during a motion
-    calllib(libname,'setNeckAccel', axis_id, 10);%radians per second squared
-    calllib(libname,'setNeckSpeed', axis_id, 5);%radians per second
+    calllib(libname,'setNeckAccel', axis_id, 18);%radians per second squared
+    calllib(libname,'setNeckSpeed', axis_id, 9);%radians per second
         
     %CPR
     %calllib(libname,'sendMsgTypeANeck',axis_id, 22793, 3758030848,2,0);
