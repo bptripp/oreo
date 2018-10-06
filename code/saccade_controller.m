@@ -1,5 +1,17 @@
 function [] = saccade_controller()
 
+% vid = videoinput('pointgrey', 1, 'F7_BayerRG8_1328x1048_Mode0');
+% vid = videoinput('pointgrey', 2, 'F7_BayerRG8_1328x1048_Mode0');
+% src = getselectedsource(vid);
+% 
+% vid.FramesPerTrigger = 1;
+% 
+% preview(vid);
+% 
+% start(vid);
+% 
+% stoppreview(vid);
+
     close all;
 
     %% Globals
@@ -691,17 +703,33 @@ function [] = saccade(des_eye, des_neck, saccade_onsets_ms, log_period_ms)
     
     clear eye_data;
     clear neck_data;
+
     
-    figure; hold on;
-    title('neck angle vs time');
-    plot(time,neck_angle);
-    legend('yaw','pitch','roll');
-    
-    figure; hold on;
-    title('eye angle vs time');
-    plot(time,eye_angle);
-    legend('yaw left','pitch left',' yaw right', 'pitch right');
-    
+    for i = 1:4
+        [left_correction, right_correction, image_left, image_right] = get_image_offset();
+        degrees_per_pixel = .0226;
+        images_left(:,:,:,i) = image_left;
+        images_right(:,:,:,i) = image_right;
+        left_move = left_correction * degrees_per_pixel * pi/180
+        right_move = right_correction * degrees_per_pixel * pi/180
+        yaw_left = yaw_left - left_move(2)
+        yaw_right = yaw_right - right_move(2)
+        pitch_left = pitch_left + left_move(1)
+        pitch_right = pitch_right + right_move(1)       
+        
+        target = [yaw_left; pitch_left; yaw_right; pitch_right]
+        do_move_eyes(target(1), target(2), target(3), target(4));
+    end
+%     figure; hold on;
+%     title('neck angle vs time');
+%     plot(time,neck_angle);
+%     legend('yaw','pitch','roll');
+%     
+%     figure; hold on;
+%     title('eye angle vs time');
+%     plot(time,eye_angle);
+%     legend('yaw left','pitch left',' yaw right', 'pitch right');
+    save('correction-images.mat', 'images_left', 'images_right')
     save('motion-data.mat', 'time', 'neck_angle', 'eye_angle')
 end
 
