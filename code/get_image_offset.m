@@ -9,8 +9,19 @@ function [left_correction, right_correction, image_left, image_right] = get_imag
     vid_left = videoinput('pointgrey', 1, 'F7_BayerRG8_1328x1048_Mode0');
     vid_right = videoinput('pointgrey', 2, 'F7_BayerRG8_1328x1048_Mode0');
 
-    image_left = getsnapshot(vid_left);
-    image_right = getsnapshot(vid_right);
+    % getting some near-black images; try multiple times as a workaround 
+    for i = 1:10
+        image_left = getsnapshot(vid_left);
+        if mean(image_left) > 10, break, end
+        disp('retrying left image aquisition')
+        pause(.05)
+    end
+    for i = 1:10
+        image_right = getsnapshot(vid_right);
+        if mean(image_right) > 10, break, end
+        disp('retrying right image aquisition')
+        pause(.05)
+    end
 
 %     figure
 %     subplot(1,2,1), imagesc(image_left); %set(gca, 'Visible', 'off')
