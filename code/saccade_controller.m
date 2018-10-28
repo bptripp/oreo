@@ -1,5 +1,17 @@
 function [] = saccade_controller()
 
+% vid = videoinput('pointgrey', 1, 'F7_BayerRG8_1328x1048_Mode0');
+% vid = videoinput('pointgrey', 2, 'F7_BayerRG8_1328x1048_Mode0');
+% src = getselectedsource(vid);
+% 
+% vid.FramesPerTrigger = 1;
+% 
+% preview(vid);
+% 
+% start(vid);
+% 
+% stoppreview(vid);
+
     close all;
 
     %% Globals
@@ -10,6 +22,7 @@ function [] = saccade_controller()
     global eye_cal;
     global eye_geometry_left;
     global eye_geometry_right;
+    global correction;
 
     left = 1;
     right = 2;
@@ -37,7 +50,13 @@ function [] = saccade_controller()
         cal_data = load('cal-data.mat');
         [eye_geometry_right, eye_geometry_left] = EyeGeometry.findGeometries(cal_data.cal, cal_data.eye);
         save('eye-geometry.mat', 'eye_geometry_right', 'eye_geometry_left')
+    
+        correction = [0; 0; 0; 0];
+        save('correction.mat', 'correction')
     end
+    
+    c = load('correction.mat');
+    correction = c.correction;
 
     eye_cal = load(filename, 'eye');
     eye_cal = eye_cal.eye;
@@ -85,6 +104,11 @@ function [] = saccade_controller()
                 continue;
             end
             saccade(des_point, [0;0;0], 0, 10);
+            
+        elseif strncmpi(action, 'correct', length('correct')) == 1
+            disp('Correcting yaw and pitch using visual target. Target must be 1m in front of robot.');
+            saccade([0;0;1], [0;0;0], 0, 10, 1);
+            
             
         elseif strncmpi(action, 'a', length('a')) == 1
             % predefined sequence A
@@ -540,12 +564,22 @@ function do_move_eyes(yaw_left, pitch_left, yaw_right, pitch_right)
     global eye_cal;
     global eye_geometry_right;
     global eye_geometry_left;
+    global correction;
 
 %     fprintf('do_move_eyes: [%4.2f %4.2f %4.2f %4.2f]\n', yaw_left, pitch_left, yaw_right, pitch_right)
     
     if(isempty(fieldnames(eye_cal)))
         return;
     end
+    
+    % apply correction from optional visual alignment
+    disp('****************')
+    [yaw_left pitch_left yaw_right pitch_right]
+    yaw_left = yaw_left + correction(1);
+    pitch_left = pitch_left + correction(2);
+    yaw_right = yaw_right + correction(3);
+    pitch_right = pitch_right + correction(4);
+    [yaw_left pitch_left yaw_right pitch_right]
     
     positions_right = eye_geometry_right.getActuatorCommands(yaw_right, pitch_right);
     calllib(libname,'setEyePos', eye_cal(1).act(right).axis_id, positions_right(1));
@@ -594,7 +628,7 @@ function [yaw, pitch] = get_angles(point)
     pitch = max(-max_angle, min(max_angle, pitch));
 end
 
-function [] = saccade(des_eye, des_neck, saccade_onsets_ms, log_period_ms)
+function [] = saccade(des_eye, des_neck, saccade_onsets_ms, log_period_ms, varargin)
     % Perform a saccade sequence.
     % des_eye: list of 3D targets to which eyes should point (3 x #saccades;
     %   target coords are [right up forward] from point between eye centres 
@@ -609,6 +643,8 @@ function [] = saccade(des_eye, des_neck, saccade_onsets_ms, log_period_ms)
     global right;
     global libname;
     global eye_cal;
+    global correction;
+    
     
     loop_time     = log_period_ms/1000;
 
@@ -692,16 +728,46 @@ function [] = saccade(des_eye, des_neck, saccade_onsets_ms, log_period_ms)
     clear eye_data;
     clear neck_data;
     
-    figure; hold on;
-    title('neck angle vs time');
-    plot(time,neck_angle);
-    legend('yaw','pitch','roll');
+    start_target = target
     
-    figure; hold on;
-    title('eye angle vs time');
-    plot(time,eye_angle);
-    legend('yaw left','pitch left',' yaw right', 'pitch right');
+    for i = 1:5
+        [left_correction, right_correction, image_left, image_right] = get_image_offset();
+        degrees_per_pixel = .0226;
+        images_left(:,:,:,i) = image_left;
+        images_right(:,:,:,i) = image_right;
+        left_move = left_correction * degrees_per_pixel * pi/180
+        right_move = right_correction * degrees_per_pixel * pi/180
+        yaw_left = yaw_left - left_move(2)
+        yaw_right = yaw_right - right_move(2)
+        pitch_left = pitch_left + left_move(1)
+        pitch_right = pitch_right + right_move(1)       
+        
+        target = [yaw_left; pitch_left; yaw_right; pitch_right]
+        do_move_eyes(target(1), target(2), target(3), target(4));
+    end
     
+    finish_target = target
+    if ~isempty(varargin)
+        target_offset = finish_target - start_target
+        yaw_mean = (target_offset(1) + target_offset(3)) / 2
+        pitch_mean = (target_offset(2) + target_offset(4)) / 2   
+        offset_means = [yaw_mean; pitch_mean; yaw_mean; pitch_mean]
+        correction = target_offset - offset_means
+        save('correction.mat', 'correction')
+        % TODO: save these new values
+    end
+    
+    
+%     figure; hold on;
+%     title('neck angle vs time');
+%     plot(time,neck_angle);
+%     legend('yaw','pitch','roll');
+%     
+%     figure; hold on;
+%     title('eye angle vs time');
+%     plot(time,eye_angle);
+%     legend('yaw left','pitch left',' yaw right', 'pitch right');
+    save('correction-images.mat', 'images_left', 'images_right')
     save('motion-data.mat', 'time', 'neck_angle', 'eye_angle')
 end
 
