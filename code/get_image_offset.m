@@ -30,6 +30,9 @@ function [left_correction, right_correction, image_left, image_right] = get_imag
     
     tic
     [left_correction, right_correction] = EyesCorrFun(image_left, image_right);
+%    [left_correction, right_correction,~] = EyesCorrFun0(image_left, image_right); speed should be faster for 0, then 1, fastest for 2
+%    [left_correction, right_correction,~] = EyesCorrFun1(image_left, image_right);
+%    [left_correction, right_correction,~] = EyesCorrFun2(image_left, image_right);
     toc
     
     % direction cameras should move
