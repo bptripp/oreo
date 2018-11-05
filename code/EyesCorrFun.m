@@ -20,7 +20,7 @@ im10 = rgb2gray(LeyeImg);
 im20 = rgb2gray(ReyeImg);
 
 
-Tsize = 250;                % Set width/hight of square "Fovea" Targets
+Tsize = 140;                % Set width/hight of square "Fovea" Targets
 im1 = imresize(im10,0.5);   % Resize the images
 im2 = imresize(im20,0.5);
 [nR,nC] = size(im1);        % Get the image size
