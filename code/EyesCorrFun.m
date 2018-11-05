@@ -1,20 +1,12 @@
 function [eyeLcorr, eyeRcorr] = EyesCorrFun(LeyeImg,ReyeImg)
-
-%%% Input/Load two images from Camera1 and Camera2, taked with cameras spaced
-%%% ~55mm apart and ~ 40cm back from central target object.
-
+%%% Input: Images from left and right eye cameras.
 %%% Output: Nx,Ny pixels each camera must shift to align with other. 
 %%% Dividing each by 2 gives the amount to shift both cams to meet in middle.
-%%% Added check that each camera shifting opposite direction. 
-%%% Should not shift both in same direction!?
-%%%
+%%% 
 %%% Remaining issue: To shift the center of the cameras image requires
 %%% changing the camera pitch and yaw angles, but the required amount
 %%% depends on the distance of the target from the cameras!
 %%% Maybe assume distance to make correction, and see if it improves
-
-%im10 = rgb2gray(imread('IMG_1245.jpg'));
-%im20 = rgb2gray(imread('IMG_1246.jpg'));
 
 im10 = rgb2gray(LeyeImg);
 im20 = rgb2gray(ReyeImg);
@@ -64,99 +56,6 @@ Cam2corrAvg(2) = Cam2corr0(2)/2;    % Perhaps only do corrections if OppSignChec
 Cam1corrAvg = Cam1corrAvg.*OppSignCheck; % Set corrections to 0 if cam1 & cam2 shifts have same sign.
 Cam2corrAvg = Cam2corrAvg.*OppSignCheck;
 
-eyeLcorr = Cam1corrAvg;
-eyeRcorr = Cam2corrAvg;
+eyeLcorr = Cam1corrAvg/0.5;
+eyeRcorr = Cam2corrAvg/0.5;
 end
-
-% %%% Plot Figures %%%                       
-% figure(1);clf;
-% subplot(2,2,1)
-% imshow(im1);hold on;title({'Camera 1 with Target 1 (blue box)','Optimal pos of Tar1 on Cam1 (black dashed)'})
-% h = gca;
-% h.Visible = 'On';
-% line([x1,x1],[y1,y2])
-% line([x2,x2],[y1,y2])
-% line([x1,x2],[y1,y1])
-% line([x1,x2],[y2,y2])
-% line([xpeak1-Tsize,xpeak1-Tsize],[ypeak1-Tsize,ypeak1],'LineStyle','--','Color','k')
-% line([xpeak1,xpeak1],[ypeak1-Tsize,ypeak1],'LineStyle','--','Color','k')
-% line([xpeak1-Tsize,xpeak1],[ypeak1-Tsize,ypeak1-Tsize],'LineStyle','--','Color','k')
-% line([xpeak1-Tsize,xpeak1],[ypeak1,ypeak1],'LineStyle','--','Color','k')
-% %plot(x1,y1,'kx')
-% plot3(xpeak1,ypeak1,max_c1,'rx','MarkerSize',18)
-% plot3(xpeak1 - Tsize,ypeak1-Tsize,max_c1,'kx')
-% %figure(2);clf;
-% subplot(2,2,2)
-% imshow(im2);hold on;title({'Camera 2 with Target 2 (blue box)','Optimal pos of Tar2 on Cam2 (black dashed)'})
-% h = gca;
-% h.Visible = 'On';
-% line([x1,x1],[y1,y2])
-% line([x2,x2],[y1,y2])
-% line([x1,x2],[y1,y1])
-% line([x1,x2],[y2,y2])
-% line([xpeak2-Tsize,xpeak2-Tsize],[ypeak2-Tsize,ypeak2],'LineStyle','--','Color','k')
-% line([xpeak2,xpeak2],[ypeak2-Tsize,ypeak2],'LineStyle','--','Color','k')
-% line([xpeak2-Tsize,xpeak2],[ypeak2-Tsize,ypeak2-Tsize],'LineStyle','--','Color','k')
-% line([xpeak2-Tsize,xpeak2],[ypeak2,ypeak2],'LineStyle','--','Color','k')
-% %plot(x1,y1,'*')
-% plot3(xpeak2,ypeak2,max_c2,'rx','MarkerSize',18)
-% plot3(xpeak2 - Tsize,ypeak2-Tsize,max_c2,'kx')
-% %figure(11);clf;
-% subplot(2,2,3)
-% surf(yvect,xvect,(c1),'EdgeColor','none');title({'NormXcorr2(Target 1,Camera 1)'})
-% colorbar;view(0,90);axis tight;hold on;
-% plot3(xpeak1,ypeak1,max_c1,'rx','MarkerSize',18)
-% %figure(22);clf;
-% subplot(2,2,4)
-% surf(yvect,xvect,(c2),'EdgeColor','none');title({'NormXcorr2(Target 2,Camera 2)'})
-% colorbar;view(0,90);axis tight;hold on;
-% plot3(xpeak2,ypeak2,max_c2,'rx','MarkerSize',18)
-% 
-% figure(12);clf;
-% subplot(2,2,2)
-% imshow(im2);hold on;title({'Camera 2 with Target 2 (green box)','Optimal pos of Tar1 on Cam2 (red dashed)'})
-% h = gca;
-% h.Visible = 'On';
-% line([x1,x1],[y1,y2],'Color','g')
-% line([x2,x2],[y1,y2],'Color','g')
-% line([x1,x2],[y1,y1],'Color','g')
-% line([x1,x2],[y2,y2],'Color','g')
-% line([xpeak12-Tsize,xpeak12-Tsize],[ypeak12-Tsize,ypeak12],'LineStyle','--','Color','r')
-% line([xpeak12,xpeak12],[ypeak12-Tsize,ypeak12],'LineStyle','--','Color','r')
-% line([xpeak12-Tsize,xpeak12],[ypeak12-Tsize,ypeak12-Tsize],'LineStyle','--','Color','r')
-% line([xpeak12-Tsize,xpeak12],[ypeak12,ypeak12],'LineStyle','--','Color','r')
-% text(100,nR-50, ['Cam1 offset: ',num2str(Cam1corr0(1)),' down, ',num2str(Cam1corr0(2)),' right'])
-% text(100,nR-20, ['Move Cam1: ',num2str(Cam1corrAvg(1)),' down, ',num2str(Cam1corrAvg(2)),' right'],'Color','r')
-% %plot(x1,y1,'kx')
-% plot3(xpeak12,ypeak12,max_c12,'rx','MarkerSize',18)
-% plot3(xpeak12-Tsize,ypeak12-Tsize,max_c12,'gx')
-% %figure(21);clf;
-% subplot(2,2,1)
-% imshow(im1);hold on;title({'Camera 1 with Target 1 (red box)','Optimal pos of Tar2 on Cam1 (green dashed)'})
-% h = gca;
-% h.Visible = 'On';
-% line([x1,x1],[y1,y2],'Color','r')
-% line([x2,x2],[y1,y2],'Color','r')
-% line([x1,x2],[y1,y1],'Color','r')
-% line([x1,x2],[y2,y2],'Color','r')
-% line([xpeak21-Tsize,xpeak21-Tsize],[ypeak21-Tsize,ypeak21],'LineStyle','--','Color','g')
-% line([xpeak21,xpeak21],[ypeak21-Tsize,ypeak21],'LineStyle','--','Color','g')
-% line([xpeak21-Tsize,xpeak21],[ypeak21-Tsize,ypeak21-Tsize],'LineStyle','--','Color','g')
-% line([xpeak21-Tsize,xpeak21],[ypeak21,ypeak21],'LineStyle','--','Color','g')
-% text(100,nR-50, ['Cam2 offset: ',num2str(Cam2corr0(1)),' down, ',num2str(Cam2corr0(2)),' right'])
-% text(100,nR-20, ['Move Cam2: ',num2str(Cam2corrAvg(1)),' down, ',num2str(Cam2corrAvg(2)),' right'],'Color','r')
-% %plot(x1,y1,'kx')
-% plot3(xpeak21,ypeak21,max_c21,'rx','MarkerSize',18)
-% plot3(xpeak21 - Tsize,ypeak21-Tsize,max_c21,'gx')
-% %figure(13);clf;
-% subplot(2,2,4)
-% surf(yvect,xvect,c12,'EdgeColor','none');title({'NormXcorr2(Target 1,Camera 2)'})
-% colorbar;view(0,90);axis tight;hold on;
-% plot3(xpeak12,ypeak12,max_c12,'rx','MarkerSize',18)
-% %plot3(y1,x1,max_c1,'*')
-% %figure(31);clf;
-% subplot(2,2,3)
-% surf(yvect,xvect,c21,'EdgeColor','none');title({'NormXcorr2(Target 2,Camera 1)'})
-% colorbar;view(0,90);axis tight;hold on;
-% plot3(xpeak21,ypeak21,max_c21,'rx','MarkerSize',18)
-% %plot3(y1,x1,max_c1,'*')
