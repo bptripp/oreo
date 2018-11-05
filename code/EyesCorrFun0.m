@@ -1,4 +1,4 @@
-function [eyeLcorr, eyeRcorr] = EyesCorrFun(LeyeImg,ReyeImg)
+function [eyeLcorr, eyeRcorr,T] = EyesCorrFun0(LeyeImg,ReyeImg)
 %%% Input: Images from left and right eye cameras.
 %%% Output: Nx,Ny pixels each camera must shift to align with other. 
 %%% Dividing each by 2 gives the amount to shift both cams to meet in middle.
@@ -8,9 +8,10 @@ function [eyeLcorr, eyeRcorr] = EyesCorrFun(LeyeImg,ReyeImg)
 %%% depends on the distance of the target from the cameras!
 %%% Maybe assume distance to make correction, and see if it improves
 
+tic
+
 im10 = rgb2gray(LeyeImg);
 im20 = rgb2gray(ReyeImg);
-
 
 Tsize = 140;                % Set width/hight of square "Fovea" Targets
 im1 = imresize(im10,0.5);   % Resize the images
@@ -27,20 +28,16 @@ im2c = im2(y1:y2,x1:x2);
 %%% Calculate the cross-correlations
 [c12] = normxcorr2(im1c,im2);   % Correlation of Target1 with Camera2
 [c21] = normxcorr2(im2c,im1);   % Correlation of Target2 with Camera1
-xvect = [1:size(c12,1)];        % Get the size of the correlograms
-yvect = [1:size(c12,2)];
-[c1] = normxcorr2(im1c,im1);    % Correlation of Target1 with Camera1 (should have max=1)
-[c2] = normxcorr2(im2c,im2);    % Correlation of Target2 with Camera2 (should have max=1)
 
-[max_c12, imax12] = max((c12(:)));  % Find the peak locations in correlograms
-[max_c21, imax21] = max((c21(:)));
-[max_c1, imax1] = max(abs(c1(:)));
-[max_c2, imax2] = max(abs(c2(:)));
+[~, imax12] = max((c12(:)));  % Find the peak locations in correlograms
+[~, imax21] = max((c21(:)));
 
 [ypeak12, xpeak12] = ind2sub(size(c12),imax12(1));  % Convert peak locations into x,y coords
 [ypeak21, xpeak21] = ind2sub(size(c21),imax21(1));
-[ypeak1, xpeak1] = ind2sub(size(c1),imax1(1));
-[ypeak2, xpeak2] = ind2sub(size(c2),imax2(1));
+ypeak1=y2;
+ypeak2=y2;
+xpeak1=x2;
+xpeak2=x2;
 
 Cam1corr0 = [ypeak1-ypeak12,xpeak1-xpeak12]; % How far 1 camera should move (in pixels) to match other camera.
 Cam2corr0 = [ypeak2-ypeak21,xpeak2-xpeak21]; % If you want to move 1 eye/camera to match the other, use these. 
@@ -56,6 +53,7 @@ Cam2corrAvg(2) = Cam2corr0(2)/2;    % Perhaps only do corrections if OppSignChec
 Cam1corrAvg = Cam1corrAvg.*OppSignCheck; % Set corrections to 0 if cam1 & cam2 shifts have same sign.
 Cam2corrAvg = Cam2corrAvg.*OppSignCheck;
 
-eyeLcorr = Cam1corrAvg/0.5;
-eyeRcorr = Cam2corrAvg/0.5;
+eyeLcorr = Cam1corrAvg;
+eyeRcorr = Cam2corrAvg;
+T=toc;
 end
